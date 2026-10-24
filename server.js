@@ -580,12 +580,12 @@ async function startWhatsApp() {
             }
         });
 
-        // Incoming Messages Upsert Listener with Debounce
+        // Incoming Messages Upsert Listener (Individual message processing)
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             if (type !== 'notify') return;
 
             for (const msg of messages) {
-                handleIncomingMessageWithDebounce(msg);
+                handleIncomingMessage(msg);
             }
         });
 
@@ -597,11 +597,11 @@ async function startWhatsApp() {
 }
 
 // -------------------------------------------------------------
-// Message Debouncing & Dispatcher
+// Message Sequential Queue & Dispatcher (Zero Skipping)
 // -------------------------------------------------------------
-const debounceMap = new Map(); // remoteJid -> { timer, texts: [], lastMsg }
+const messageQueues = new Map(); // remoteJid -> Promise chain
 
-function handleIncomingMessageWithDebounce(msg) {
+function handleIncomingMessage(msg) {
     if (!msg || !msg.message || msg.key.fromMe) return;
 
     const remoteJid = msg.key.remoteJid;
@@ -699,27 +699,15 @@ function handleIncomingMessageWithDebounce(msg) {
         return;
     }
 
-    // Debounce rapid messages from the same sender by 1.8 seconds
-    if (debounceMap.has(remoteJid)) {
-        const item = debounceMap.get(remoteJid);
-        clearTimeout(item.timer);
-        item.texts.push(body.trim());
-        item.lastMsg = msg;
-        item.timer = setTimeout(() => {
-            debounceMap.delete(remoteJid);
-            processAggregatedMessage(item.lastMsg, item.texts.join('\n'), pushName, cleanPhone, contactConfig);
-        }, 1800);
-    } else {
-        const item = {
-            texts: [body.trim()],
-            lastMsg: msg,
-            timer: setTimeout(() => {
-                debounceMap.delete(remoteJid);
-                processAggregatedMessage(item.lastMsg, item.texts.join('\n'), pushName, cleanPhone, contactConfig);
-            }, 1800)
-        };
-        debounceMap.set(remoteJid, item);
-    }
+    // Process every single message sequentially in queue without dropping or batching
+    const currentQueue = messageQueues.get(remoteJid) || Promise.resolve();
+    const nextQueue = currentQueue
+        .then(() => processSingleMessage(msg, body.trim(), pushName, cleanPhone, contactConfig))
+        .catch((err) => {
+            log('ERROR', `Error processing message from ${pushName}: ${err.message}`);
+        });
+
+    messageQueues.set(remoteJid, nextQueue);
 }
 
 // -------------------------------------------------------------
@@ -798,7 +786,7 @@ function getMoneyGuardrailReply(detectedLang) {
 // -------------------------------------------------------------
 // Core AI Processing Pipeline
 // -------------------------------------------------------------
-async function processAggregatedMessage(msg, body, pushName, cleanPhone, contactConfig) {
+async function processSingleMessage(msg, body, pushName, cleanPhone, contactConfig) {
     const remoteJid = msg.key.remoteJid;
 
     log('AI', `Processing AI response for ${pushName}: "${body.slice(0, 45)}${body.length > 45 ? '...' : ''}"`);
