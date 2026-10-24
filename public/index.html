@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp AI Bridge — Control Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+        <div class="nav-container">
+            <div class="brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                        <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2zm.01 1.67c4.54 0 8.24 3.7 8.24 8.24 0 2.2-.86 4.28-2.42 5.84-1.56 1.56-3.64 2.4-5.83 2.4-1.47 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.188 8.188 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.26-8.24zm-3.6 4.3c-.2 0-.43.08-.62.29-.2.21-.75.73-.75 1.78s.77 2.06.88 2.21c.1.15 1.48 2.37 3.65 3.23 1.8 1.15 2.16.92 2.55.88.39-.04 1.25-.51 1.43-1s.18-.92.13-1c-.05-.08-.2-.14-.42-.25s-1.25-.62-1.45-.69-.34-.11-.49.11-.56.69-.69.83-.25.16-.47.05c-.22-.11-.93-.34-1.77-1.09-.65-.58-1.09-1.3-1.22-1.52-.13-.22-.01-.34.1-.45.1-.1.22-.25.33-.38.11-.13.15-.22.22-.36.07-.15.04-.27-.02-.38s-.49-1.24-.69-1.7c-.19-.46-.38-.4-.52-.41l-.44-.01z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="brand-title">WhatsApp <span class="gradient-text">AI Bridge</span></h1>
+                    <span class="brand-subtitle">Powered by Groq LPU & Baileys</span>
+                </div>
+            </div>
+
+            <!-- Connection Status Pill -->
+            <div class="nav-actions">
+                <div id="connectionStatusBadge" class="status-pill status-disconnected">
+                    <span class="status-dot"></span>
+                    <span id="connectionStatusText">Connecting...</span>
+                </div>
+                <button id="btnRestartSocket" class="btn btn-secondary btn-sm" title="Restart WhatsApp Socket">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6M1 20v-6h6"/>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                    </svg>
+                    Restart
+                </button>
+                <button id="btnLogout" class="btn btn-danger-outline btn-sm" title="Logout & Reset Session">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+                    </svg>
+                    Logout
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-content">
+        <!-- Quick Stats Ribbon -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-blue">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="stat-label">Messages Received</div>
+                    <div class="stat-value" id="statReceived">0</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-green">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="stat-label">AI Replies Sent</div>
+                    <div class="stat-value" id="statReplies">0</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-purple">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="stat-label">Whitelisted Contacts</div>
+                    <div class="stat-value" id="statWhitelisted">0</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-yellow">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="stat-label">Uptime</div>
+                    <div class="stat-value" id="statUptime">0m</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- WhatsApp Connection Banner / QR Section -->
+        <section id="connectionSection" class="glass-card mb-6">
+            <!-- Connected View -->
+            <div id="viewConnected" class="connection-view hidden">
+                <div class="connected-card-inner">
+                    <div class="connected-badge-icon">
+                        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                    </div>
+                    <div class="connected-info">
+                        <div class="connected-title">WhatsApp Linked & Listening</div>
+                        <div class="connected-meta">
+                            Connected as <strong id="connectedUserName">User</strong> (<span id="connectedUserPhone">+0000000000</span>)
+                        </div>
+                    </div>
+                    <div class="connected-actions">
+                        <span class="live-indicator"><span class="live-dot"></span> Live Socket</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- QR Ready View -->
+            <div id="viewQR" class="connection-view">
+                <div class="qr-layout">
+                    <div class="qr-frame-wrapper">
+                        <div class="qr-frame">
+                            <img id="qrImage" alt="WhatsApp QR Code" src="" class="qr-img">
+                            <div id="qrLoading" class="qr-spinner-overlay">
+                                <div class="spinner"></div>
+                                <span>Generating QR Code...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="qr-instructions">
+                        <h2 class="section-title">Link Your WhatsApp Account</h2>
+                        <ol class="step-list">
+                            <li>Open <strong>WhatsApp</strong> on your mobile phone</li>
+                            <li>Tap <strong>Settings</strong> or <strong>Menu (⋮)</strong> & select <strong>Linked Devices</strong></li>
+                            <li>Tap <strong>Link a Device</strong> and point your camera at this QR code</li>
+                            <li>Your local session credentials will be saved securely on disk</li>
+                        </ol>
+
+                        <div class="pairing-divider">
+                            <span>OR LINK WITH PHONE NUMBER</span>
+                        </div>
+
+                        <!-- Pairing Code Generator -->
+                        <div class="pairing-form">
+                            <input type="text" id="pairingPhoneInput" placeholder="Phone with country code (e.g. 919876543210)" class="input-field">
+                            <button id="btnGetPairingCode" class="btn btn-primary">Get Pairing Code</button>
+                        </div>
+                        <div id="pairingCodeDisplay" class="pairing-code-box hidden">
+                            <span class="pairing-code-label">Enter this code on your phone:</span>
+                            <span id="pairingCodeValue" class="pairing-code-digits">0000-0000</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Master AI Switch & Mode Settings Card -->
+        <section class="glass-card mb-6">
+            <div class="master-control-row">
+                <div class="master-text">
+                    <div class="master-header">
+                        <h2 class="master-title">Master AI Auto-Responder</h2>
+                        <span id="masterStatusBadge" class="badge badge-success">ACTIVE</span>
+                    </div>
+                    <p class="master-desc">
+                        When enabled, incoming messages from approved contacts will automatically trigger Groq AI completions and instant replies.
+                    </p>
+                </div>
+                <div class="master-toggle-wrap">
+                    <label class="switch-lg">
+                        <input type="checkbox" id="masterToggle" checked>
+                        <span class="slider-lg"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="filter-controls-row">
+                <div class="control-col">
+                    <label class="field-label">Whitelist Filtering Mode</label>
+                    <select id="whitelistModeSelect" class="select-field">
+                        <option value="only_whitelisted">Strict: Reply ONLY to Whitelisted Contacts (Recommended)</option>
+                        <option value="all_except_disabled">Permissive: Reply to All Except Disabled Contacts</option>
+                    </select>
+                </div>
+                <div class="control-col">
+                    <label class="field-label">Group Chats</label>
+                    <select id="allowGroupsSelect" class="select-field">
+                        <option value="false">Ignore Group Chats (Direct Messages Only)</option>
+                        <option value="true">Enable in Group Chats</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- Contact Whitelist Manager -->
+        <section class="glass-card mb-6">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Contact Whitelist Manager</h2>
+                    <p class="section-desc">Selectively enable or disable AI auto-replies and assign custom prompts per contact.</p>
+                </div>
+                <button id="btnOpenAddContact" class="btn btn-primary btn-sm">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    Add Contact
+                </button>
+            </div>
+
+            <!-- Contact Search & Filter Toolbar -->
+            <div class="toolbar">
+                <div class="search-box">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="contactSearchInput" placeholder="Search contacts by name or phone..." class="input-field search-input">
+                </div>
+                <div class="filter-tabs">
+                    <button class="tab-btn active" data-filter="all">All (<span id="countAll">0</span>)</button>
+                    <button class="tab-btn" data-filter="whitelisted">Whitelisted (<span id="countWhitelisted">0</span>)</button>
+                    <button class="tab-btn" data-filter="disabled">Disabled (<span id="countDisabled">0</span>)</button>
+                </div>
+            </div>
+
+            <!-- Contact List / Table -->
+            <div class="contacts-container">
+                <div id="contactsList" class="contacts-list">
+                    <!-- Populated dynamically via app.js -->
+                </div>
+                <div id="noContactsMsg" class="empty-state hidden">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    <p class="empty-title">No contacts found</p>
+                    <p class="empty-desc">New contacts are automatically registered when they message you, or you can add numbers manually.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI Personality & Groq Configuration -->
+        <section class="glass-card mb-6">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Groq AI Engine Settings</h2>
+                    <p class="section-desc">Configure inference engine, model parameters, and global system persona.</p>
+                </div>
+                <button id="btnSaveConfig" class="btn btn-primary btn-sm">Save Settings</button>
+            </div>
+
+            <div class="settings-grid">
+                <!-- Groq Multi-Key Pool Card -->
+                <div class="form-group col-span-full">
+                    <div class="key-pool-header">
+                        <div class="key-pool-title-wrap">
+                            <label class="field-label">Multi-Key Load Balancing Pool</label>
+                            <span id="keyPoolBadge" class="badge badge-success">5 KEYS ACTIVE</span>
+                        </div>
+                        <button id="btnTestGroq" class="btn btn-secondary btn-sm">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            Test Key Pool
+                        </button>
+                    </div>
+                    <div id="keyPoolList" class="key-pool-grid">
+                        <!-- Populated dynamically via app.js -->
+                    </div>
+                    <span id="groqTestFeedback" class="test-feedback"></span>
+                </div>
+
+                <!-- Model Selector -->
+                <div class="form-group">
+                    <label class="field-label" for="modelSelect">AI Model</label>
+                    <select id="modelSelect" class="select-field">
+                        <option value="qwen/qwen3.8-27b" selected>Qwen 3.8 27B (Recommended — Lightning Fast, Multilingual & High Limits)</option>
+                        <option value="openai/gpt-oss-20b">GPT OSS 20B (Small & Smart, High Limits)</option>
+                        <option value="openai/gpt-oss-120b">GPT OSS 120B (High Intelligence & Reasoning)</option>
+                    </select>
+                </div>
+
+                <!-- Temperature & Max Tokens -->
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="field-label">Creativity (Temperature: <span id="tempValue">0.7</span>)</label>
+                        <input type="range" id="tempRange" min="0" max="1" step="0.05" value="0.7" class="range-slider">
+                    </div>
+                    <div class="form-group">
+                        <label class="field-label">Max Reply Length (Tokens: <span id="tokensValue">300</span>)</label>
+                        <input type="range" id="tokensRange" min="50" max="800" step="50" value="300" class="range-slider">
+                    </div>
+                </div>
+
+                <!-- Global System Prompt -->
+                <div class="form-group col-span-full">
+                    <div class="prompt-header">
+                        <label class="field-label" for="defaultPromptInput">Global AI System Prompt</label>
+                        <div class="prompt-presets">
+                            <span class="preset-label">Presets:</span>
+                            <button type="button" class="preset-chip" data-prompt="You are a helpful, concise personal AI assistant replying on WhatsApp. Keep responses natural, friendly, and brief (1-3 sentences) suitable for chat messaging.">Helpful</button>
+                            <button type="button" class="preset-chip" data-prompt="Reply in a very casual, cool, and friendly texting style like a close buddy. Use occasional emojis, keep it snappy and chill.">Casual Friend</button>
+                            <button type="button" class="preset-chip" data-prompt="Reply with utmost professionalism as an executive assistant. Be polite, formal, and advise urgent matters to be sent via email.">Executive</button>
+                            <button type="button" class="preset-chip" data-prompt="You are a friendly customer service representative. Offer courteous, solution-oriented replies and answer questions warmly.">Support</button>
+                        </div>
+                    </div>
+                    <textarea id="defaultPromptInput" rows="3" class="textarea-field" placeholder="Define how the AI should talk when replying to messages..."></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Activity Console -->
+        <section class="glass-card mb-6">
+            <div class="section-header">
+                <div class="console-title-wrap">
+                    <div class="console-dot"></div>
+                    <h2 class="section-title">Live Activity Feed</h2>
+                </div>
+                <div class="console-actions">
+                    <button id="btnClearContext" class="btn btn-secondary btn-sm" title="Clear in-memory chat history for all contacts">Reset Memory</button>
+                    <button id="btnClearLogs" class="btn btn-secondary btn-sm">Clear Feed</button>
+                </div>
+            </div>
+            <div id="consoleFeed" class="terminal-window">
+                <div class="terminal-placeholder">Awaiting incoming WhatsApp events...</div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal: Add / Edit Contact -->
+    <div id="contactModal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="modalTitle" class="modal-title">Add Contact to Whitelist</h3>
+                <button id="btnCloseModal" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="modalJid">
+                <div class="form-group">
+                    <label class="field-label" for="modalPhone">Phone Number with Country Code</label>
+                    <input type="text" id="modalPhone" placeholder="e.g. 919876543210" class="input-field">
+                    <span class="field-hint">Include country code without '+' or special characters.</span>
+                </div>
+                <div class="form-group">
+                    <label class="field-label" for="modalName">Contact Name / Nickname</label>
+                    <input type="text" id="modalName" placeholder="e.g. Alex" class="input-field">
+                </div>
+                <div class="form-group">
+                    <label class="field-label">AI Auto-Reply for this Contact</label>
+                    <div class="switch-row">
+                        <label class="switch">
+                            <input type="checkbox" id="modalEnabled" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span id="modalEnabledLabel" class="switch-label-text">Enabled (AI will reply)</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="field-label" for="modalCustomPrompt">Per-Contact Custom Prompt (Optional)</label>
+                    <textarea id="modalCustomPrompt" rows="3" class="textarea-field" placeholder="Leave empty to use the Global System Prompt, or write custom instructions for this specific contact..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btnCancelModal" class="btn btn-secondary">Cancel</button>
+                <button id="btnSaveContactModal" class="btn btn-primary">Save Contact</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
