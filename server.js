@@ -126,7 +126,14 @@ LANGUAGE & FORMAT:
   * Banglish (e.g. 'kamon acho', 'ki korchis') -> Fluent, colloquial Banglish with natural transliteration spellings.
   * Hinglish (e.g. 'kya kar raha hai', 'theek hoon') -> Fluent, colloquial Hinglish with natural transliteration spellings.
 - Always use natural emojis (😊, 😂, ✨, 👍, 🙌, etc.).
-- Keep responses short, natural, and punchy (1-2 sentences), ideal for WhatsApp.`;
+- Keep responses short, natural, and punchy (1-2 sentences), ideal for WhatsApp.
+
+MEDIA & ATTACHMENT RULES (Images, Audios, Videos, Files):
+- You CANNOT see images/photos/videos or hear audio messages.
+- If the sender asks about an image, video, audio, or file they sent, always respond politely in English:
+  * Images: "I can't view images, let's wait for Rishav to come back online! 👀📸"
+  * Audios: "I cannot hear audios, let's wait for Rishav to come back online! 🎧🔇"
+  * Videos: "I cannot view videos, let's wait for Rishav to come back online! 🎬🍿"`;
 
 function loadConfig() {
     const defaultConfig = {
@@ -596,26 +603,42 @@ function handleIncomingMessageWithDebounce(msg) {
     const isGroup = remoteJid.endsWith('@g.us');
     if (isGroup && !config.allowGroups) return;
 
-    // Extract text and media types gracefully
-    const messageContent = msg.message;
+    // Extract text and media types gracefully (unwrapping view-once, ephemeral, and document containers)
+    const rawMsg = msg.message;
+    const messageContent = rawMsg?.ephemeralMessage?.message ||
+                           rawMsg?.viewOnceMessage?.message ||
+                           rawMsg?.viewOnceMessageV2?.message ||
+                           rawMsg?.documentWithCaptionMessage?.message ||
+                           rawMsg || {};
+
+    const caption = messageContent.imageMessage?.caption ||
+                    messageContent.videoMessage?.caption ||
+                    messageContent.documentMessage?.caption ||
+                    '';
+
     let body = messageContent.conversation ||
                messageContent.extendedTextMessage?.text ||
-               messageContent.imageMessage?.caption ||
-               messageContent.videoMessage?.caption ||
+               caption ||
                messageContent.buttonsResponseMessage?.selectedDisplayText ||
                messageContent.templateButtonReplyMessage?.selectedId ||
                '';
 
-    const isAudio = !!messageContent.audioMessage;
-    const isSticker = !!messageContent.stickerMessage;
-    const isImageWithoutCaption = !!messageContent.imageMessage && !body.trim();
+    const isAudio = !!(messageContent.audioMessage);
+    const isSticker = !!(messageContent.stickerMessage);
+    const isImage = !!(messageContent.imageMessage);
+    const isVideo = !!(messageContent.videoMessage);
+    const isDocument = !!(messageContent.documentMessage);
 
     if (isAudio) {
         body = "[Voice Note / Audio Message]";
     } else if (isSticker) {
         body = "[Sticker]";
-    } else if (isImageWithoutCaption) {
-        body = "[Photo / Image]";
+    } else if (isImage) {
+        body = caption.trim() ? `[Photo / Image with caption: ${caption.trim()}]` : "[Photo / Image]";
+    } else if (isVideo) {
+        body = caption.trim() ? `[Video with caption: ${caption.trim()}]` : "[Video]";
+    } else if (isDocument) {
+        body = caption.trim() ? `[Document / File with caption: ${caption.trim()}]` : "[Document / File]";
     }
 
     if (!body || !body.trim()) return;
@@ -706,13 +729,17 @@ async function processAggregatedMessage(msg, body, pushName, cleanPhone, contact
 
         let replyText = '';
 
-        // Media and special type handling
+        // Media and special type handling fallbacks
         if (body === '[Sticker]') {
             replyText = '😄👌';
-        } else if (body === '[Voice Note / Audio Message]') {
-            replyText = 'Ami ekdom audio sunte parchi na ekhon, please ektu text e bolo! 😊';
-        } else if (body === '[Photo / Image]') {
-            replyText = 'Chobi ta besh sundor lagche! Kothakar eta? 😊';
+        } else if (body.startsWith('[Voice Note / Audio Message]')) {
+            replyText = "I cannot hear audios, let's wait for Rishav to come back online! 🎧🔇";
+        } else if (body.startsWith('[Photo / Image]')) {
+            replyText = "I can't view images, let's wait for Rishav to come back online! 👀📸";
+        } else if (body.startsWith('[Video]')) {
+            replyText = "I cannot view videos, let's wait for Rishav to come back online! 🎬🍿";
+        } else if (body.startsWith('[Document / File]')) {
+            replyText = "I cannot open files or documents, let's wait for Rishav to come back online! 📄📎";
         } else if (PURE_EMOJI_REGEX.test(body)) {
             const emojiReaction = getEmojiFallback(body);
             replyText = emojiReaction;
