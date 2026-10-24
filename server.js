@@ -16,6 +16,7 @@ const {
 const util = require('util');
 const {
     useMongoAuthState,
+    clearMongoAuth,
     loadMongoConfig,
     saveMongoConfig
 } = require('./mongoStorage');
@@ -502,13 +503,16 @@ async function startWhatsApp() {
 
                 if (statusCode === DisconnectReason.loggedOut) {
                     reconnectAttempts = 0;
-                    log('ERROR', 'Session logged out from phone. Cleaning local auth files...');
+                    log('ERROR', 'Session logged out from phone. Cleaning auth credentials and generating fresh QR...');
                     try {
                         fs.rmSync(AUTH_DIR, { recursive: true, force: true });
                     } catch (e) {
                         console.error('Error cleaning auth folder:', e.message);
                     }
-                    reconnectTimer = setTimeout(startWhatsApp, 3000);
+                    if (process.env.MONGODB_URI) {
+                        await clearMongoAuth('auth_sessions').catch(() => {});
+                    }
+                    reconnectTimer = setTimeout(startWhatsApp, 2000);
                 } else if (shouldReconnect) {
                     scheduleReconnect();
                 }
@@ -953,6 +957,9 @@ app.post('/api/auth/logout', async (req, res) => {
         }
         if (fs.existsSync(AUTH_DIR)) {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+        }
+        if (process.env.MONGODB_URI) {
+            await clearMongoAuth('auth_sessions').catch(() => {});
         }
         connectionStatus = 'DISCONNECTED';
         currentQR = null;

@@ -198,9 +198,23 @@ async function saveMongoConfig(config) {
     }
 }
 
+async function clearMongoAuth(collectionName = 'auth_sessions') {
+    const db = await getMongoDb();
+    if (!db) return;
+
+    try {
+        const collection = db.collection(collectionName);
+        await collection.deleteMany({});
+        console.log(`[MONGODB] Cleared ${collectionName} collection.`);
+    } catch (err) {
+        console.error('[MONGODB] Clear auth warning:', err.message);
+    }
+}
+
 module.exports = {
     getMongoDb,
     useMongoAuthState,
+    clearMongoAuth,
     loadMongoConfig,
     saveMongoConfig
 };
