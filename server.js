@@ -10,7 +10,8 @@ const {
     default: makeWASocket,
     DisconnectReason,
     useMultiFileAuthState,
-    fetchLatestBaileysVersion
+    fetchLatestBaileysVersion,
+    Browsers
 } = require('@whiskeysockets/baileys');
 
 const util = require('util');
@@ -418,6 +419,22 @@ let reconnectAttempts = 0;
 let presenceTimer = null;
 const MAX_RECONNECT_DELAY = 30000;
 
+function cleanupCurrentSocket() {
+    if (sock) {
+        try {
+            sock.ev.removeAllListeners();
+            if (sock.ws) {
+                try {
+                    sock.ws.removeAllListeners();
+                    sock.ws.close();
+                } catch (_) {}
+            }
+            sock.end(undefined);
+        } catch (_) {}
+        sock = null;
+    }
+}
+
 async function setOffline() {
     if (!sock || connectionStatus !== 'CONNECTED') return;
     try {
@@ -425,10 +442,10 @@ async function setOffline() {
     } catch (_) {}
 }
 
-function scheduleReconnect() {
+function scheduleReconnect(customDelay = null) {
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectAttempts++;
-    const delay = Math.min(2000 * Math.pow(2, Math.min(reconnectAttempts - 1, 4)), MAX_RECONNECT_DELAY) + Math.floor(Math.random() * 1000);
+    const delay = customDelay || (Math.min(2000 * Math.pow(2, Math.min(reconnectAttempts - 1, 4)), MAX_RECONNECT_DELAY) + Math.floor(Math.random() * 1000));
     log('INFO', `Reconnecting WhatsApp in ${(delay / 1000).toFixed(1)}s (Attempt #${reconnectAttempts})...`);
     reconnectTimer = setTimeout(startWhatsApp, delay);
 }
@@ -438,6 +455,9 @@ async function startWhatsApp() {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
     }
+
+    // Always cleanly tear down any existing socket before initializing a new one
+    cleanupCurrentSocket();
 
     connectionStatus = 'CONNECTING';
     currentQR = null;
@@ -471,7 +491,7 @@ async function startWhatsApp() {
             printQRInTerminal: false,
             auth: state,
             markOnlineOnConnect: false, // 🛡️ Prevent WhatsApp Web from marking you 'Online' 24/7
-            browser: ['AI WhatsApp Bridge', 'Chrome', '120.0.0'],
+            browser: Browsers.ubuntu('Chrome'),
             generateHighQualityLinkPreview: false,
             syncFullHistory: false
         });
@@ -493,13 +513,15 @@ async function startWhatsApp() {
 
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
                 connectionStatus = 'DISCONNECTED';
                 currentQR = null;
                 currentPairingCode = null;
                 connectedUser = null;
 
-                log('ERROR', `Connection closed (Code: ${statusCode || 'Unknown'}). Reconnect expected: ${shouldReconnect}`);
+                log('ERROR', `Connection closed (Code: ${statusCode || 'Unknown'}).`);
+
+                // Immediately destroy the dead/closing socket
+                cleanupCurrentSocket();
 
                 if (statusCode === DisconnectReason.loggedOut) {
                     reconnectAttempts = 0;
@@ -512,8 +534,14 @@ async function startWhatsApp() {
                     if (process.env.MONGODB_URI) {
                         await clearMongoAuth('auth_sessions').catch(() => {});
                     }
-                    reconnectTimer = setTimeout(startWhatsApp, 2000);
-                } else if (shouldReconnect) {
+                    if (reconnectTimer) clearTimeout(reconnectTimer);
+                    reconnectTimer = setTimeout(startWhatsApp, 2500);
+                } else if (statusCode === DisconnectReason.connectionReplaced) {
+                    reconnectAttempts = 0;
+                    log('WARNING', 'Connection conflict (Code 440): another active connection was detected with this session. Waiting 25s for previous socket to release before reconnecting...');
+                    if (reconnectTimer) clearTimeout(reconnectTimer);
+                    reconnectTimer = setTimeout(startWhatsApp, 25000);
+                } else {
                     scheduleReconnect();
                 }
             } else if (connection === 'open') {
@@ -525,9 +553,16 @@ async function startWhatsApp() {
                 const phone = sock.user?.id ? sock.user.id.split(':')[0] : 'Unknown';
                 log('SUCCESS', `WhatsApp connected successfully! Linked Account: +${phone} (${sock.user?.name || 'User'})`);
 
-                // 🛡️ Stealth Presence: Set status to Offline / Unavailable immediately
-                await sock.sendPresenceUpdate('unavailable').catch(() => {});
-                log('INFO', 'Presence set to OFFLINE (unavailable). 24/7 Online status disabled!');
+                // 🛡️ Stealth Presence: markOnlineOnConnect is already false.
+                // Settle socket handshake before sending unavailable presence update.
+                setTimeout(async () => {
+                    if (sock && connectionStatus === 'CONNECTED') {
+                        try {
+                            await sock.sendPresenceUpdate('unavailable');
+                            log('INFO', 'Stealth Presence: Status set to OFFLINE (unavailable). 24/7 Online status disabled!');
+                        } catch (_) {}
+                    }
+                }, 3500);
             }
         });
 
@@ -935,12 +970,12 @@ app.post('/api/auth/pairing-code', async (req, res) => {
 // Restart WhatsApp Connection
 app.post('/api/auth/restart', (req, res) => {
     log('INFO', 'Manual restart initiated from dashboard...');
-    if (sock) {
-        try {
-            sock.end(undefined);
-        } catch (_) {}
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
     }
-    setTimeout(startWhatsApp, 1000);
+    cleanupCurrentSocket();
+    setTimeout(startWhatsApp, 2000);
     res.json({ success: true, message: 'Restarting WhatsApp socket...' });
 });
 
@@ -948,13 +983,16 @@ app.post('/api/auth/restart', (req, res) => {
 app.post('/api/auth/logout', async (req, res) => {
     log('INFO', 'Logging out and clearing session credentials...');
     try {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
         if (sock) {
             try {
                 await sock.logout();
-            } catch (_) {
-                sock.end(undefined);
-            }
+            } catch (_) {}
         }
+        cleanupCurrentSocket();
         if (fs.existsSync(AUTH_DIR)) {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
         }
@@ -965,7 +1003,7 @@ app.post('/api/auth/logout', async (req, res) => {
         currentQR = null;
         currentPairingCode = null;
         connectedUser = null;
-        setTimeout(startWhatsApp, 2000);
+        setTimeout(startWhatsApp, 2500);
         res.json({ success: true, message: 'Logged out successfully. Generating fresh QR...' });
     } catch (err) {
         log('ERROR', `Logout error: ${err.message}`);
@@ -1021,11 +1059,7 @@ process.on('unhandledRejection', (reason) => {
 function handleExit(signal) {
     log('INFO', `Received ${signal}. Shutting down cleanly...`);
     saveConfig();
-    if (sock) {
-        try {
-            sock.end(undefined);
-        } catch (_) {}
-    }
+    cleanupCurrentSocket();
     process.exit(0);
 }
 
