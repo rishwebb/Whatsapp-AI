@@ -381,6 +381,15 @@ setInterval(() => {
     }
 }, 60 * 60 * 1000);
 
+// 🛡️ Periodic Stealth Check: Guarantee 24/7 Offline status when idle
+setInterval(async () => {
+    if (sock && connectionStatus === 'CONNECTED') {
+        try {
+            await sock.sendPresenceUpdate('unavailable').catch(() => {});
+        } catch (_) {}
+    }
+}, 5 * 60 * 1000);
+
 // Pure Emoji Matcher / Fallback
 const PURE_EMOJI_REGEX = /^(\p{Emoji_Presentation}|\p{Extended_Pictographic}|\s)+$/u;
 
@@ -408,18 +417,10 @@ let reconnectAttempts = 0;
 let presenceTimer = null;
 const MAX_RECONNECT_DELAY = 30000;
 
-async function pulseOnlinePresence(durationMs = 15000) {
+async function setOffline() {
     if (!sock || connectionStatus !== 'CONNECTED') return;
     try {
-        await sock.sendPresenceUpdate('available').catch(() => {});
-        if (presenceTimer) clearTimeout(presenceTimer);
-        presenceTimer = setTimeout(async () => {
-            try {
-                if (sock && connectionStatus === 'CONNECTED') {
-                    await sock.sendPresenceUpdate('unavailable').catch(() => {});
-                }
-            } catch (_) {}
-        }, durationMs);
+        await sock.sendPresenceUpdate('unavailable').catch(() => {});
     } catch (_) {}
 }
 
@@ -529,9 +530,6 @@ async function startWhatsApp() {
         // Incoming Messages Upsert Listener with Debounce
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             if (type !== 'notify') return;
-
-            // 🛡️ Pulse online presence for 15s when new messages arrive, then return to offline
-            pulseOnlinePresence(15000);
 
             for (const msg of messages) {
                 handleIncomingMessageWithDebounce(msg);
@@ -663,7 +661,9 @@ async function processAggregatedMessage(msg, body, pushName, cleanPhone, contact
 
     log('AI', `Processing AI response for ${pushName}: "${body.slice(0, 45)}${body.length > 45 ? '...' : ''}"`);
     try {
-        await sock.sendPresenceUpdate('composing', remoteJid);
+        // 🛡️ Stealth Presence: Come online & show typing ONLY when actively replying to an approved contact
+        await sock.sendPresenceUpdate('available').catch(() => {});
+        await sock.sendPresenceUpdate('composing', remoteJid).catch(() => {});
 
         let replyText = '';
 
@@ -727,7 +727,15 @@ async function processAggregatedMessage(msg, body, pushName, cleanPhone, contact
         log('ERROR', `Groq Pool Error for ${pushName}: ${err.message}`);
     } finally {
         try {
-            await sock.sendPresenceUpdate('paused', remoteJid);
+            await sock.sendPresenceUpdate('paused', remoteJid).catch(() => {});
+            // Immediately drop back to OFFLINE as soon as response is finished
+            setTimeout(async () => {
+                try {
+                    if (sock && connectionStatus === 'CONNECTED') {
+                        await sock.sendPresenceUpdate('unavailable').catch(() => {});
+                    }
+                } catch (_) {}
+            }, 1000);
         } catch (_) {}
     }
 }
