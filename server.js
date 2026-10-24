@@ -106,34 +106,41 @@ ROLE & PERSONALITY:
 - You are an AI (Rishav's AI), so do not pretend to be Rishav himself, but enjoy chatting, joking, listening, and keeping people company.
 - Default to CASUAL, ENGAGING CHAT for normal conversations. React to what they say, joke around, ask how they are, and reply warmly!
 
-CASUAL CHATTING RULES (Applies to normal chats):
+RULE #1: STRICT LANGUAGE MATCHING (MANDATORY):
+- Detect and reply in the EXACT language of the user's latest message:
+  * If the user speaks ENGLISH -> Reply ONLY in pure, natural ENGLISH! Never reply in Bengali, Banglish, or Hindi.
+  * If the user speaks BANGLISH (Bengali written in English letters, e.g. "kmn achis", "ki korcho", "taka de") -> Reply in BANGLISH.
+  * If the user speaks HINGLISH (Hindi written in English letters, e.g. "kaise ho", "kya kar raha hai", "paise de") -> Reply in HINGLISH.
+  * If the user writes in BENGALI SCRIPT (বাংলা) -> Reply in বাংলা.
+  * If the user writes in HINDI SCRIPT (हिंदी) -> Reply in हिंदी.
+
+CASUAL CHATTING RULES:
 - For greetings, how-are-yous, casual questions, jokes, compliments, daily talk, or small talk:
   * Chat completely normally, casually, and warmly!
   * DO NOT say "Master is offline", DO NOT say "wait for Master to decide", and DO NOT push them away!
+  * Example for "How are you bro?" (English): "I'm doing great! How are you doing? What are you up to today? 😊"
   * Example for "Kmn achis bhai" (Banglish): "Ami ekdom bhalo achi bhai! Tumi kemon acho? Ki korcho bolo? 😊"
   * Example for "Ki" (Banglish): "Kichu na, bolo ki khobor? Sob thikthak? 😊"
+  * Example for "Kaisa hai bhai" (Hinglish): "Main badhiya hoon bhai! Tu kaisa hai? Kya chal raha hai? 😊"
 
 STRICT DECISION & MONEY GUARDRAIL (ONLY for high-stakes/dire requests):
 - ONLY when someone explicitly asks for money, UPI/bank transfers, financial transactions, signing contracts, or official commitments:
   * Politely refuse and say that as an AI you cannot handle money or official decisions, so let Master come and he will handle it.
-  * English: "I'm just Master's AI, so I can't handle money or official deals! Let Master come back and he'll sort this out. 😊"
-  * Banglish: "Ami toh Master-er AI, tai taka-poysha ba boro kono decision ami nite parbo na. Master ashuk, oita o-i dekhbe! 😊"
-  * Hinglish: "Main toh bas Master ka AI hoon, toh paise ya koi bada faisla main nahi le sakta. Master aayenge tab wahi decide karenge! 😊"
-
-LANGUAGE & FORMAT:
-- Detect and reply in the EXACT language/dialect of the sender:
-  * English -> Natural, conversational English.
-  * Banglish (e.g. 'kamon acho', 'ki korchis') -> Fluent, colloquial Banglish with natural transliteration spellings.
-  * Hinglish (e.g. 'kya kar raha hai', 'theek hoon') -> Fluent, colloquial Hinglish with natural transliteration spellings.
-- Always use natural emojis (😊, 😂, ✨, 👍, 🙌, etc.).
-- Keep responses short, natural, and punchy (1-2 sentences), ideal for WhatsApp.
+  * MUST match the language of their request:
+    - English: "I'm just Master's AI, so I can't handle money or financial transactions! Let Master come back and he'll sort this out. 😊"
+    - Banglish: "Ami toh Master-er AI, tai taka-poysha ba boro kono decision ami nite parbo na. Master ashuk, oita o-i dekhbe! 😊"
+    - Hinglish: "Main toh bas Master ka AI hoon, toh paise ya koi financial faisla main nahi le sakta. Master aayenge tab wahi decide karenge! 😊"
 
 MEDIA & ATTACHMENT RULES (Images, Audios, Videos, Files):
 - You CANNOT see images/photos/videos or hear audio messages.
 - If the sender asks about an image, video, audio, or file they sent, always respond politely in English:
   * Images: "I can't view images, let's wait for Rishav to come back online! 👀📸"
   * Audios: "I cannot hear audios, let's wait for Rishav to come back online! 🎧🔇"
-  * Videos: "I cannot view videos, let's wait for Rishav to come back online! 🎬🍿"`;
+  * Videos: "I cannot view videos, let's wait for Rishav to come back online! 🎬🍿"
+
+FORMAT:
+- Always use natural emojis (😊, 😂, ✨, 👍, 🙌, etc.).
+- Keep responses short, natural, and punchy (1-2 sentences), ideal for WhatsApp.`;
 
 function loadConfig() {
     const defaultConfig = {
@@ -716,6 +723,79 @@ function handleIncomingMessageWithDebounce(msg) {
 }
 
 // -------------------------------------------------------------
+// Language Detection & Direct Defense Guardrails
+// -------------------------------------------------------------
+function detectMessageLanguage(text) {
+    if (!text) return 'English';
+    if (/[\u0980-\u09FF]/.test(text)) return 'Bengali';
+    if (/[\u0900-\u097F]/.test(text)) return 'Hindi';
+
+    const lower = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+    const tokens = new Set(lower.split(/\s+/).filter(Boolean));
+
+    const banglishWords = [
+        'ami', 'tumi', 'tui', 'apni', 'kemon', 'kmn', 'acho', 'achis', 'achen',
+        'bolo', 'bolun', 'ki', 'korcho', 'korchis', 'korchen', 'khobor', 'bhalo',
+        'shob', 'sob', 'taka', 'poysha', 'aschi', 'aschis', 'eta', 'ota', 'kothay',
+        'kothakar', 'hobe', 'hoyeche', 'hyeche', 'dekhe', 'chobi', 'ektu', 'ekdom',
+        'patha', 'pathabi', 'pathaben', 'shono', 'shuncho', 'keno', 'ken', 'tai',
+        'halka', 'bujte', 'bujhechi', 'parbo', 'parbona', 'ashuk', 'bondhu', 'dada'
+    ];
+
+    const hinglishWords = [
+        'kya', 'hai', 'hain', 'kaise', 'kaisa', 'kaisi', 'kar', 'raha', 'rahi',
+        'rahe', 'batao', 'bataiye', 'paise', 'rupaye', 'bhej', 'bhejo', 'dekh',
+        'dekho', 'mera', 'meri', 'mere', 'tera', 'teri', 'tere', 'apna', 'apni',
+        'kab', 'kahan', 'nahi', 'nhi', 'haan', 'accha', 'acha', 'suno', 'sun',
+        'chahiye', 'mang', 'dena', 'karo', 'mujhe', 'tujhe', 'hoga', 'hogi', 'yaar'
+    ];
+
+    let banglishHits = 0;
+    let hinglishHits = 0;
+
+    for (const w of banglishWords) {
+        if (tokens.has(w)) banglishHits++;
+    }
+    for (const w of hinglishWords) {
+        if (tokens.has(w)) hinglishHits++;
+    }
+
+    if (banglishHits > 0 && banglishHits >= hinglishHits) return 'Banglish';
+    if (hinglishHits > 0) return 'Hinglish';
+    return 'English';
+}
+
+function isDirectMoneyRequest(text) {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    const moneyTerms = /(?:money|cash|taka|rupaye|paise|bucks|dollars|funds|₹|rs\.?|inr)/i;
+    const actionTerms = /(?:send|give|transfer|pay|lend|borrow|loan|need|want|chahiye|bhej|bhejo|de\s*do|patha|pathabi|lagbe|dhar|udhar)/i;
+
+    if (actionTerms.test(lower) && moneyTerms.test(lower)) return true;
+    if (/(?:[0-9]+\s*(?:₹|rs\.?|taka|rupaye|paise|bucks)).*(?:send|de|bhej|patha|chahiye|lagbe|transfer|please)/i.test(lower)) return true;
+    if (/(?:send|bhej|patha|give|transfer).*(?:[0-9]+)/i.test(lower) && /(?:₹|rs\.?|taka|rupaye|paise|money|cash)/i.test(lower)) return true;
+
+    return false;
+}
+
+function getMoneyGuardrailReply(detectedLang) {
+    if (detectedLang === 'Banglish') {
+        return "Ami toh Master-er AI, tai taka-poysha ba boro kono decision ami nite parbo na. Master ashuk, oita o-i dekhbe! 😊";
+    }
+    if (detectedLang === 'Hinglish') {
+        return "Main toh bas Master ka AI hoon, toh paise ya koi financial faisla main nahi le sakta. Master aayenge tab wahi decide karenge! 😊";
+    }
+    if (detectedLang === 'Bengali') {
+        return "আমি মাস্টারের এআই, তাই টাকা-পয়সার ব্যাপারে কোনো সিদ্ধান্ত নিতে পারব না। মাস্টার এলে ও নিজেই দেখবে! 😊";
+    }
+    if (detectedLang === 'Hindi') {
+        return "मैं तो बस मास्टर का एआई हूँ, इसलिए पैसों का कोई फैसला मैं नहीं ले सकता। मास्टर आएंगे तो वही देखेंगे! 😊";
+    }
+    // Default to English
+    return "I'm just Master's AI, so I can't handle money or financial transactions! Let Master come back and he'll sort this out. 😊";
+}
+
+// -------------------------------------------------------------
 // Core AI Processing Pipeline
 // -------------------------------------------------------------
 async function processAggregatedMessage(msg, body, pushName, cleanPhone, contactConfig) {
@@ -728,6 +808,7 @@ async function processAggregatedMessage(msg, body, pushName, cleanPhone, contact
         await sock.sendPresenceUpdate('composing', remoteJid).catch(() => {});
 
         let replyText = '';
+        const detectedLang = detectMessageLanguage(body);
 
         // Media and special type handling fallbacks
         if (body === '[Sticker]') {
@@ -741,8 +822,11 @@ async function processAggregatedMessage(msg, body, pushName, cleanPhone, contact
         } else if (body.startsWith('[Document / File]')) {
             replyText = "I cannot open files or documents, let's wait for Rishav to come back online! 📄📎";
         } else if (PURE_EMOJI_REGEX.test(body)) {
-            const emojiReaction = getEmojiFallback(body);
-            replyText = emojiReaction;
+            replyText = getEmojiFallback(body);
+        } else if (isDirectMoneyRequest(body)) {
+            // 🛡️ Deterministic Language-Accurate Money Defense Guardrail
+            replyText = getMoneyGuardrailReply(detectedLang);
+            log('FILTER', `Defended direct money request in ${detectedLang}: "${body.slice(0, 30)}..."`);
         }
 
         if (!replyText) {
@@ -753,8 +837,16 @@ async function processAggregatedMessage(msg, body, pushName, cleanPhone, contact
                 ? contactConfig.customPrompt.trim()
                 : config.defaultSystemPrompt;
 
+            const languageDirective = `CRITICAL LANGUAGE DIRECTIVE FOR THIS RESPONSE:
+The user's latest message is written in ${detectedLang.toUpperCase()}.
+You MUST reply strictly and 100% in ${detectedLang.toUpperCase()}!
+- If ENGLISH: Reply in natural English. Do NOT use any Bengali, Hindi, or mixed words.
+- If BANGLISH: Reply in colloquial Banglish with natural transliteration spellings.
+- If HINGLISH: Reply in colloquial Hinglish with natural transliteration spellings.
+Never mix or respond in a different language than what the user used.`;
+
             const messagesPayload = [
-                { role: 'system', content: promptToUse },
+                { role: 'system', content: `${promptToUse}\n\n${languageDirective}` },
                 ...history
             ];
 
