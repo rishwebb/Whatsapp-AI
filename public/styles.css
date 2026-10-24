@@ -1294,7 +1294,62 @@ body {
 }
 
 /* ==========================================================================
-   Responsive Adaptations
+   System Controls / Danger Zone Panel
+   ========================================================================== */
+.system-controls-card {
+    border-color: rgba(239, 68, 68, 0.2);
+    margin-top: 28px;
+    background: rgba(15, 23, 42, 0.7);
+}
+
+.system-actions-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.system-action-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    flex-wrap: wrap;
+}
+
+.system-action-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 220px;
+}
+
+.system-action-text strong {
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.system-action-text span {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.danger-box {
+    border-color: rgba(239, 68, 68, 0.25);
+    background: rgba(239, 68, 68, 0.03);
+}
+
+.text-danger {
+    color: #ef4444 !important;
+}
+
+/* ==========================================================================
+   Comprehensive Mobile & Edge-to-Edge Responsive Adaptations
    ========================================================================== */
 @media (max-width: 840px) {
     .qr-layout {
@@ -1310,6 +1365,293 @@ body {
     .filter-controls-row,
     .settings-grid,
     .form-row-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    html, body {
+        overflow-x: hidden !important;
+        width: 100vw;
+    }
+
+    /* Edge-to-Edge Fluid Containers */
+    .nav-container {
+        padding: 12px 14px;
+        gap: 10px;
+    }
+
+    .brand-icon {
+        width: 36px;
+        height: 36px;
+    }
+
+    .brand-title {
+        font-size: 1.05rem;
+    }
+
+    .brand-subtitle {
+        font-size: 0.68rem;
+    }
+
+    .status-pill {
+        padding: 4px 10px;
+        font-size: 0.74rem;
+    }
+
+    .main-content {
+        padding: 0 12px;
+        margin: 14px auto;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .glass-card {
+        padding: 16px 14px;
+        border-radius: var(--radius-md);
+        margin-bottom: 16px;
+        width: 100%;
+    }
+
+    /* 2x2 Clean Adaptive Stats Grid */
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .stat-card {
+        padding: 12px;
+        gap: 10px;
+        border-radius: var(--radius-sm);
+        min-width: 0;
+    }
+
+    .stat-icon {
+        width: 34px;
+        height: 34px;
+        flex-shrink: 0;
+    }
+
+    .stat-value {
+        font-size: 1.2rem;
+    }
+
+    .stat-label {
+        font-size: 0.7rem;
+        line-height: 1.2;
+    }
+
+    /* Connection Card */
+    .connected-card-inner {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .connected-badge-icon {
+        width: 44px;
+        height: 44px;
+    }
+
+    .connected-title {
+        font-size: 1rem;
+    }
+
+    .connected-meta {
+        font-size: 0.8rem;
+        word-break: break-word;
+    }
+
+    .connected-actions {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    /* Master Switch & Selects */
+    .master-control-row {
+        gap: 12px;
+        padding-bottom: 14px;
+    }
+
+    .master-title {
+        font-size: 1rem;
+    }
+
+    .master-desc {
+        font-size: 0.78rem;
+    }
+
+    .switch-lg {
+        width: 58px;
+        height: 32px;
+        flex-shrink: 0;
+    }
+
+    .slider-lg:before {
+        height: 24px;
+        width: 24px;
+    }
+
+    .switch-lg input:checked + .slider-lg:before {
+        transform: translateX(26px);
+    }
+
+    .filter-controls-row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .select-field {
+        font-size: 0.82rem;
+        padding: 10px;
+        width: 100%;
+        max-width: 100%;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    /* Whitelist Toolbar & Tabs */
+    .section-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .section-header .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    .search-box {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .filter-tabs {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .tab-btn {
+        flex: 1;
+        padding: 6px 4px;
+        font-size: 0.72rem;
+        text-align: center;
+    }
+
+    /* Contact Cards */
+    .contact-card {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .contact-left {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .contact-name {
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .contact-actions {
+        width: 100%;
+        justify-content: space-between;
+        padding-top: 10px;
+        border-top: 1px solid var(--border-subtle);
+    }
+
+    /* Key Pool Grid */
+    .key-pool-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .key-card {
+        padding: 8px 12px;
+    }
+
+    /* AI Settings & Forms */
+    .api-key-input-wrap {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .api-key-input-wrap input {
+        width: 100%;
+    }
+
+    .api-key-input-wrap button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .settings-grid,
+    .form-row-2 {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    /* Live Activity Console */
+    .console-actions {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    .console-actions .btn {
+        flex: 1;
+        justify-content: center;
+        padding: 6px 8px;
+        font-size: 0.75rem;
+    }
+
+    .terminal-window {
+        padding: 12px;
+        max-height: 250px;
+        font-size: 0.75rem;
+        word-break: break-word;
+        overflow-x: hidden;
+    }
+
+    /* System Controls / Danger Zone on Mobile */
+    .system-action-box {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 14px;
+    }
+
+    .system-action-box .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Touch Targets */
+    .btn {
+        min-height: 40px;
+        touch-action: manipulation;
+    }
+}
+
+@media (max-width: 360px) {
+    .stats-grid {
         grid-template-columns: 1fr;
     }
 }

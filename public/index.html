@@ -31,19 +31,6 @@
                     <span class="status-dot"></span>
                     <span id="connectionStatusText">Connecting...</span>
                 </div>
-                <button id="btnRestartSocket" class="btn btn-secondary btn-sm" title="Restart WhatsApp Socket">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M23 4v6h-6M1 20v-6h6"/>
-                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                    </svg>
-                    Restart
-                </button>
-                <button id="btnLogout" class="btn btn-danger-outline btn-sm" title="Logout & Reset Session">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
-                    </svg>
-                    Logout
-                </button>
             </div>
         </div>
     </header>
@@ -336,6 +323,43 @@
             </div>
             <div id="consoleFeed" class="terminal-window">
                 <div class="terminal-placeholder">Awaiting incoming WhatsApp events...</div>
+            </div>
+        </section>
+
+        <!-- Session & System Operations (Safe Bottom Section) -->
+        <section class="glass-card mb-6 system-controls-card">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title text-muted">Session & System Operations</h2>
+                    <p class="section-desc">Manage socket state or unlink this WhatsApp session</p>
+                </div>
+            </div>
+            <div class="system-actions-grid">
+                <div class="system-action-box">
+                    <div class="system-action-text">
+                        <strong>Restart WhatsApp Socket</strong>
+                        <span>Re-establishes network connection without logging out or needing QR scan.</span>
+                    </div>
+                    <button id="btnRestartSocket" class="btn btn-secondary">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 4v6h-6M1 20v-6h6"/>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                        </svg>
+                        Restart Socket
+                    </button>
+                </div>
+                <div class="system-action-box danger-box">
+                    <div class="system-action-text">
+                        <strong class="text-danger">Unlink Account (Logout)</strong>
+                        <span>Disconnects phone and wipes session from MongoDB Atlas. Requires scanning QR code again.</span>
+                    </div>
+                    <button id="btnLogout" class="btn btn-danger-outline">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+                        </svg>
+                        Logout & Reset
+                    </button>
+                </div>
             </div>
         </section>
     </main>
