@@ -11,7 +11,8 @@ const {
     DisconnectReason,
     useMultiFileAuthState,
     fetchLatestBaileysVersion,
-    Browsers
+    Browsers,
+    jidNormalizedUser
 } = require('@whiskeysockets/baileys');
 
 const util = require('util');
@@ -582,10 +583,10 @@ async function startWhatsApp() {
 
         // Incoming Messages Upsert Listener (Individual message processing)
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
-            if (type !== 'notify') return;
+            if (!Array.isArray(messages)) return;
 
             for (const msg of messages) {
-                handleIncomingMessage(msg);
+                handleIncomingMessage(msg, type || 'notify');
             }
         });
 
@@ -600,15 +601,41 @@ async function startWhatsApp() {
 // Message Sequential Queue & Dispatcher (Zero Skipping)
 // -------------------------------------------------------------
 const messageQueues = new Map(); // remoteJid -> Promise chain
+const processedMessageIds = new Set();
 
-function handleIncomingMessage(msg) {
-    if (!msg || !msg.message || msg.key.fromMe) return;
+function isDuplicateMessage(msgId) {
+    if (!msgId) return false;
+    if (processedMessageIds.has(msgId)) return true;
+    processedMessageIds.add(msgId);
+    if (processedMessageIds.size > 2000) {
+        const first = processedMessageIds.values().next().value;
+        processedMessageIds.delete(first);
+    }
+    return false;
+}
 
-    const remoteJid = msg.key.remoteJid;
-    if (!remoteJid || remoteJid === 'status@broadcast') return;
+function handleIncomingMessage(msg, eventType = 'notify') {
+    if (!msg || !msg.message || msg.key?.fromMe) return;
 
+    // Deduplicate by WhatsApp message ID to avoid processing the same message twice across notify and append
+    if (msg.key?.id && isDuplicateMessage(msg.key.id)) {
+        return;
+    }
+
+    const rawJid = msg.key?.remoteJid;
+    if (!rawJid || rawJid === 'status@broadcast') return;
+
+    const remoteJid = jidNormalizedUser(rawJid);
     const isGroup = remoteJid.endsWith('@g.us');
     if (isGroup && !config.allowGroups) return;
+
+    // Filter out stale / historical messages older than 3 minutes (180s) to prevent spamming old chats on reconnect
+    const msgTimestamp = typeof msg.messageTimestamp === 'number'
+        ? msg.messageTimestamp
+        : (msg.messageTimestamp?.low || Number(msg.messageTimestamp) || 0);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const ageSeconds = nowSeconds - msgTimestamp;
+    const isHistorical = (msgTimestamp > 0 && ageSeconds > 180);
 
     // Extract text and media types gracefully (unwrapping view-once, ephemeral, and document containers)
     const rawMsg = msg.message;
@@ -655,9 +682,23 @@ function handleIncomingMessage(msg) {
     const cleanPhone = remoteJid.split('@')[0];
     const pushName = msg.pushName || cleanPhone;
 
-    // Auto-discover contact
-    if (!config.contacts[remoteJid]) {
-        config.contacts[remoteJid] = {
+    // Contact resolution: Check exact normalized JID or match by clean phone / LID digits
+    let matchedKey = remoteJid;
+    let contactConfig = config.contacts[remoteJid];
+
+    if (!contactConfig) {
+        for (const [key, c] of Object.entries(config.contacts)) {
+            if (c.phone === cleanPhone || key.split('@')[0] === cleanPhone) {
+                matchedKey = key;
+                contactConfig = c;
+                break;
+            }
+        }
+    }
+
+    // Auto-discover if completely new contact
+    if (!contactConfig) {
+        config.contacts[matchedKey] = {
             name: pushName,
             phone: cleanPhone,
             enabled: false,
@@ -668,21 +709,28 @@ function handleIncomingMessage(msg) {
         };
         saveConfig();
         log('INFO', `Discovered new contact: ${pushName} (+${cleanPhone}). Whitelist status: DISABLED.`);
+        contactConfig = config.contacts[matchedKey];
     } else {
-        config.contacts[remoteJid].lastActive = Date.now();
-        config.contacts[remoteJid].lastMessage = body.slice(0, 80);
-        if (msg.pushName && !config.contacts[remoteJid].name) {
-            config.contacts[remoteJid].name = msg.pushName;
+        contactConfig.lastActive = Date.now();
+        contactConfig.lastMessage = body.slice(0, 80);
+        if (msg.pushName && !contactConfig.name) {
+            contactConfig.name = msg.pushName;
         }
         saveConfig();
     }
 
-    const contactConfig = config.contacts[remoteJid];
+    log('INFO', `[RECV] Message from ${contactConfig.name || pushName} (+${cleanPhone}): "${body.slice(0, 50)}" (event: ${eventType})`);
+
+    // If message is historical (> 3 minutes old), update dashboard status but skip generating an AI reply
+    if (isHistorical) {
+        log('FILTER', `Ignored historical message from ${contactConfig.name || pushName} (${ageSeconds}s old).`);
+        return;
+    }
 
     // Check Master Switch
     if (!config.masterEnabled) {
         stats.messagesIgnored++;
-        log('FILTER', `Master Switch is OFF. Ignored message from ${pushName}: "${body.slice(0, 30)}..."`);
+        log('FILTER', `Master Switch is OFF. Ignored message from ${contactConfig.name || pushName}: "${body.slice(0, 30)}..."`);
         return;
     }
 
@@ -690,21 +738,21 @@ function handleIncomingMessage(msg) {
     const isWhitelisted = contactConfig && contactConfig.enabled === true;
     if (config.whitelistMode === 'only_whitelisted' && !isWhitelisted) {
         stats.messagesIgnored++;
-        log('FILTER', `Ignored non-whitelisted sender: ${pushName} (+${cleanPhone})`);
+        log('FILTER', `Ignored non-whitelisted sender: ${contactConfig.name || pushName} (+${cleanPhone})`);
         return;
     }
     if (config.whitelistMode === 'all_except_disabled' && contactConfig && contactConfig.enabled === false) {
         stats.messagesIgnored++;
-        log('FILTER', `Ignored disabled contact: ${pushName} (+${cleanPhone})`);
+        log('FILTER', `Ignored disabled contact: ${contactConfig.name || pushName} (+${cleanPhone})`);
         return;
     }
 
     // Process every single message sequentially in queue without dropping or batching
     const currentQueue = messageQueues.get(remoteJid) || Promise.resolve();
     const nextQueue = currentQueue
-        .then(() => processSingleMessage(msg, body.trim(), pushName, cleanPhone, contactConfig))
+        .then(() => processSingleMessage(msg, body.trim(), contactConfig.name || pushName, cleanPhone, contactConfig, remoteJid))
         .catch((err) => {
-            log('ERROR', `Error processing message from ${pushName}: ${err.message}`);
+            log('ERROR', `Error processing message from ${contactConfig.name || pushName}: ${err.message}`);
         });
 
     messageQueues.set(remoteJid, nextQueue);
@@ -786,8 +834,8 @@ function getMoneyGuardrailReply(detectedLang) {
 // -------------------------------------------------------------
 // Core AI Processing Pipeline
 // -------------------------------------------------------------
-async function processSingleMessage(msg, body, pushName, cleanPhone, contactConfig) {
-    const remoteJid = msg.key.remoteJid;
+async function processSingleMessage(msg, body, pushName, cleanPhone, contactConfig, targetJid) {
+    const remoteJid = targetJid || jidNormalizedUser(msg.key?.remoteJid);
 
     log('AI', `Processing AI response for ${pushName}: "${body.slice(0, 45)}${body.length > 45 ? '...' : ''}"`);
     try {
