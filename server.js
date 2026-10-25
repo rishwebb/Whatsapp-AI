@@ -505,10 +505,13 @@ async function startWhatsApp() {
             logger: pino({ level: 'silent' }),
             printQRInTerminal: false,
             auth: state,
-            markOnlineOnConnect: false, // 🛡️ Prevent WhatsApp Web from marking you 'Online' 24/7
+            markOnlineOnConnect: true,
             browser: Browsers.ubuntu('Chrome'),
             generateHighQualityLinkPreview: false,
-            syncFullHistory: false
+            syncFullHistory: false,
+            getMessage: async (key) => {
+                return messageStore.get(key.id) || undefined;
+            }
         });
 
         sock.ev.on('creds.update', saveCreds);
@@ -567,25 +570,22 @@ async function startWhatsApp() {
                 connectedUser = sock.user;
                 const phone = sock.user?.id ? sock.user.id.split(':')[0] : 'Unknown';
                 log('SUCCESS', `WhatsApp connected successfully! Linked Account: +${phone} (${sock.user?.name || 'User'})`);
-
-                // 🛡️ Stealth Presence: markOnlineOnConnect is already false.
-                // Settle socket handshake before sending unavailable presence update.
-                setTimeout(async () => {
-                    if (sock && connectionStatus === 'CONNECTED') {
-                        try {
-                            await sock.sendPresenceUpdate('unavailable');
-                            log('INFO', 'Stealth Presence: Status set to OFFLINE (unavailable). 24/7 Online status disabled!');
-                        } catch (_) {}
-                    }
-                }, 3500);
             }
         });
 
         // Incoming Messages Upsert Listener (Individual message processing)
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             if (!Array.isArray(messages)) return;
+            log('INFO', `[UPSERT] Received ${messages.length} message(s) from WhatsApp (event: ${type || 'notify'})`);
 
             for (const msg of messages) {
+                if (msg.key?.id && msg.message) {
+                    messageStore.set(msg.key.id, msg.message);
+                    if (messageStore.size > 2000) {
+                        const firstKey = messageStore.keys().next().value;
+                        messageStore.delete(firstKey);
+                    }
+                }
                 handleIncomingMessage(msg, type || 'notify');
             }
         });
@@ -600,6 +600,7 @@ async function startWhatsApp() {
 // -------------------------------------------------------------
 // Message Sequential Queue & Dispatcher (Zero Skipping)
 // -------------------------------------------------------------
+const messageStore = new Map(); // id -> msg.message
 const messageQueues = new Map(); // remoteJid -> Promise chain
 const processedMessageIds = new Set();
 
@@ -922,14 +923,6 @@ Never mix or respond in a different language than what the user used.`;
     } finally {
         try {
             await sock.sendPresenceUpdate('paused', remoteJid).catch(() => {});
-            // Immediately drop back to OFFLINE as soon as response is finished
-            setTimeout(async () => {
-                try {
-                    if (sock && connectionStatus === 'CONNECTED') {
-                        await sock.sendPresenceUpdate('unavailable').catch(() => {});
-                    }
-                } catch (_) {}
-            }, 1000);
         } catch (_) {}
     }
 }
