@@ -505,7 +505,7 @@ async function startWhatsApp() {
             logger: pino({ level: 'silent' }),
             printQRInTerminal: false,
             auth: state,
-            markOnlineOnConnect: true,
+            markOnlineOnConnect: false, // 🛡️ Prevent WhatsApp from marking you 'Online' 24/7
             browser: Browsers.ubuntu('Chrome'),
             generateHighQualityLinkPreview: false,
             syncFullHistory: false,
@@ -570,6 +570,16 @@ async function startWhatsApp() {
                 connectedUser = sock.user;
                 const phone = sock.user?.id ? sock.user.id.split(':')[0] : 'Unknown';
                 log('SUCCESS', `WhatsApp connected successfully! Linked Account: +${phone} (${sock.user?.name || 'User'})`);
+
+                // 🛡️ Stealth Presence: Set status to unavailable so you never appear 'Online' 24/7
+                setTimeout(async () => {
+                    if (sock && connectionStatus === 'CONNECTED') {
+                        try {
+                            await sock.sendPresenceUpdate('unavailable');
+                            log('INFO', 'Stealth Presence: Status set to OFFLINE (unavailable). 24/7 Online status disabled!');
+                        } catch (_) {}
+                    }
+                }, 2000);
             }
         });
 
@@ -840,8 +850,7 @@ async function processSingleMessage(msg, body, pushName, cleanPhone, contactConf
 
     log('AI', `Processing AI response for ${pushName}: "${body.slice(0, 45)}${body.length > 45 ? '...' : ''}"`);
     try {
-        // 🛡️ Stealth Presence: Come online & show typing ONLY when actively replying to an approved contact
-        await sock.sendPresenceUpdate('available').catch(() => {});
+        // 🛡️ Stealth Presence: Show typing ONLY to the recipient of the active reply
         await sock.sendPresenceUpdate('composing', remoteJid).catch(() => {});
 
         let replyText = '';
@@ -923,6 +932,7 @@ Never mix or respond in a different language than what the user used.`;
     } finally {
         try {
             await sock.sendPresenceUpdate('paused', remoteJid).catch(() => {});
+            await sock.sendPresenceUpdate('unavailable').catch(() => {});
         } catch (_) {}
     }
 }
