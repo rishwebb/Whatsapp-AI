@@ -16,12 +16,7 @@ const {
 } = require('@whiskeysockets/baileys');
 
 const util = require('util');
-const {
-    useMongoAuthState,
-    clearMongoAuth,
-    loadMongoConfig,
-    saveMongoConfig
-} = require('./mongoStorage');
+const cloudSync = require('./cloudSync');
 
 // -------------------------------------------------------------
 // Production Logger & Libsignal Console Noise Filter
@@ -203,9 +198,7 @@ function saveConfig() {
     } catch (e) {
         console.error('Failed to save config.json:', e.message);
     }
-    if (process.env.MONGODB_URI) {
-        saveMongoConfig(config).catch(err => console.error('[MONGODB] Save config error:', err.message));
-    }
+    cloudSync.syncSettingsToCloud(config);
 }
 
 // -------------------------------------------------------------
@@ -480,22 +473,10 @@ async function startWhatsApp() {
     log('INFO', 'Initializing WhatsApp socket...');
 
     try {
-        let authState;
-        if (process.env.MONGODB_URI) {
-            log('INFO', 'MongoDB URI detected. Using MongoDB Atlas for persistent cloud auth...');
-            authState = await useMongoAuthState('auth_sessions', AUTH_DIR);
-            const cloudCfg = await loadMongoConfig(config).catch(() => null);
-            if (cloudCfg) {
-                config = { ...config, ...cloudCfg };
-                log('INFO', 'Synchronized configuration from MongoDB Atlas.');
-            }
-        } else {
-            if (!fs.existsSync(AUTH_DIR)) {
-                fs.mkdirSync(AUTH_DIR, { recursive: true });
-            }
-            authState = await useMultiFileAuthState(AUTH_DIR);
+        if (!fs.existsSync(AUTH_DIR)) {
+            fs.mkdirSync(AUTH_DIR, { recursive: true });
         }
-        const { state, saveCreds } = authState;
+        const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
         const { version, isLatest } = await fetchLatestBaileysVersion();
         log('INFO', `Using Baileys version ${version.join('.')} (Latest: ${isLatest})`);
@@ -514,7 +495,10 @@ async function startWhatsApp() {
             }
         });
 
-        sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('creds.update', async () => {
+            await saveCreds();
+            cloudSync.queueAuthSync();
+        });
 
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
@@ -549,9 +533,7 @@ async function startWhatsApp() {
                     } catch (e) {
                         console.error('Error cleaning auth folder:', e.message);
                     }
-                    if (process.env.MONGODB_URI) {
-                        await clearMongoAuth('auth_sessions').catch(() => {});
-                    }
+                    await cloudSync.clearCloudAuth();
                     if (reconnectTimer) clearTimeout(reconnectTimer);
                     reconnectTimer = setTimeout(startWhatsApp, 2500);
                 } else if (statusCode === DisconnectReason.connectionReplaced) {
@@ -1154,9 +1136,7 @@ app.post('/api/auth/logout', async (req, res) => {
         if (fs.existsSync(AUTH_DIR)) {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
         }
-        if (process.env.MONGODB_URI) {
-            await clearMongoAuth('auth_sessions').catch(() => {});
-        }
+        await cloudSync.clearCloudAuth();
         connectionStatus = 'DISCONNECTED';
         currentQR = null;
         currentPairingCode = null;
@@ -1225,14 +1205,25 @@ process.on('SIGINT', () => handleExit('SIGINT'));
 process.on('SIGTERM', () => handleExit('SIGTERM'));
 
 // -------------------------------------------------------------
-// Start Server
+// Start Server with Cloud Sync Restore
 // -------------------------------------------------------------
-app.listen(PORT, () => {
-    originalConsoleLog(`====================================================`);
-    originalConsoleLog(`🚀 AI WhatsApp Bridge Server listening on port ${PORT}`);
-    originalConsoleLog(`🔑 Groq Multi-Key Pool loaded with ${getActiveKeyPool().length} keys`);
-    originalConsoleLog(`🧠 Primary Model: ${config.model} (Max Tokens: ${config.maxTokens})`);
-    originalConsoleLog(`🌐 Control Dashboard: http://localhost:${PORT}`);
-    originalConsoleLog(`====================================================`);
-    startWhatsApp();
-});
+async function initAndStart() {
+    await cloudSync.initCloudSync({
+        authDir: AUTH_DIR,
+        configFile: CONFIG_FILE
+    });
+    await cloudSync.restoreFromCloud();
+    config = loadConfig();
+
+    app.listen(PORT, () => {
+        originalConsoleLog(`====================================================`);
+        originalConsoleLog(`🚀 AI WhatsApp Bridge Server listening on port ${PORT}`);
+        originalConsoleLog(`🔑 Groq Multi-Key Pool loaded with ${getActiveKeyPool().length} keys`);
+        originalConsoleLog(`🧠 Primary Model: ${config.model} (Max Tokens: ${config.maxTokens})`);
+        originalConsoleLog(`🌐 Control Dashboard: http://localhost:${PORT}`);
+        originalConsoleLog(`====================================================`);
+        startWhatsApp();
+    });
+}
+
+initAndStart();
