@@ -427,6 +427,52 @@ let reconnectAttempts = 0;
 let presenceTimer = null;
 const MAX_RECONNECT_DELAY = 30000;
 
+// Clean self-contained retry cache implementing get/set/del/flushAll for Baileys
+class MemoryCache {
+    constructor(ttlMs = 3600000) {
+        this.cache = new Map();
+        this.ttlMs = ttlMs;
+    }
+    get(key) {
+        const item = this.cache.get(key);
+        if (!item) return undefined;
+        if (Date.now() > item.expiresAt) {
+            this.cache.delete(key);
+            return undefined;
+        }
+        return item.value;
+    }
+    set(key, value) {
+        this.cache.set(key, { value, expiresAt: Date.now() + this.ttlMs });
+        if (this.cache.size > 2000) {
+            const oldestKey = this.cache.keys().next().value;
+            this.cache.delete(oldestKey);
+        }
+    }
+    del(key) {
+        this.cache.delete(key);
+    }
+    delete(key) {
+        this.cache.delete(key);
+    }
+    flushAll() {
+        this.cache.clear();
+    }
+}
+
+// Long-lived message retry cache & store for WhatsApp End-to-End Encryption
+const msgRetryCounterCache = new MemoryCache(3600000);
+const messageStore = new Map(); // id -> msg.message
+
+function saveMessage(id, message) {
+    if (!id || !message) return;
+    messageStore.set(id, message);
+    if (messageStore.size > 2000) {
+        const oldestKey = messageStore.keys().next().value;
+        messageStore.delete(oldestKey);
+    }
+}
+
 function cleanupCurrentSocket() {
     if (sock) {
         try {
@@ -449,6 +495,8 @@ async function setOffline() {
         await sock.sendPresenceUpdate('unavailable').catch(() => {});
     } catch (_) {}
 }
+
+setInterval(setOffline, 10 * 60 * 1000);
 
 function scheduleReconnect(customDelay = null) {
     if (reconnectTimer) clearTimeout(reconnectTimer);
@@ -486,12 +534,19 @@ async function startWhatsApp() {
             logger: pino({ level: 'silent' }),
             printQRInTerminal: false,
             auth: state,
+            msgRetryCounterCache,
             markOnlineOnConnect: false, // 🛡️ Prevent WhatsApp from marking you 'Online' 24/7
             browser: Browsers.ubuntu('Chrome'),
             generateHighQualityLinkPreview: false,
             syncFullHistory: false,
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 30000,
             getMessage: async (key) => {
-                return messageStore.get(key.id) || undefined;
+                if (key?.id && messageStore.has(key.id)) {
+                    return messageStore.get(key.id);
+                }
+                return undefined;
             }
         });
 
@@ -520,14 +575,12 @@ async function startWhatsApp() {
                 currentPairingCode = null;
                 connectedUser = null;
 
-                log('ERROR', `Connection closed (Code: ${statusCode || 'Unknown'}).`);
-
                 // Immediately destroy the dead/closing socket
                 cleanupCurrentSocket();
 
                 if (statusCode === DisconnectReason.loggedOut) {
                     reconnectAttempts = 0;
-                    log('ERROR', 'Session logged out from phone. Cleaning auth credentials and generating fresh QR...');
+                    log('ERROR', 'Session logged out from phone (Code 401). Cleaning auth credentials and generating fresh QR...');
                     try {
                         fs.rmSync(AUTH_DIR, { recursive: true, force: true });
                     } catch (e) {
@@ -542,6 +595,7 @@ async function startWhatsApp() {
                     if (reconnectTimer) clearTimeout(reconnectTimer);
                     reconnectTimer = setTimeout(startWhatsApp, 25000);
                 } else {
+                    log('WARNING', `Connection closed temporarily (Code: ${statusCode || 'Unknown'}). Auto-reconnecting...`);
                     scheduleReconnect();
                 }
             } else if (connection === 'open') {
@@ -562,6 +616,33 @@ async function startWhatsApp() {
                         } catch (_) {}
                     }
                 }, 2000);
+
+                // Assert primary phone and key active contact sessions to eliminate Bad MAC and LID 428 stream drops
+                try {
+                    const jidsToAssert = [];
+                    if (sock.user?.id) jidsToAssert.push(jidNormalizedUser(sock.user.id));
+                    if (sock.user?.lid) jidsToAssert.push(jidNormalizedUser(sock.user.lid));
+
+                    // Assert all whitelisted contacts / LIDs from config
+                    for (const contactKey of Object.keys(config.contacts || {})) {
+                        if (contactKey) jidsToAssert.push(contactKey);
+                    }
+
+                    const uniqueJids = Array.from(new Set(jidsToAssert.filter(Boolean)));
+                    if (uniqueJids.length && typeof sock.assertSessions === 'function') {
+                        sock.assertSessions(uniqueJids, true)
+                            .then(() => log('INFO', `Asserted Signal sessions for ${uniqueJids.length} device JIDs.`))
+                            .catch(e => log('WARNING', `Signal session assert note: ${e.message}`));
+                    }
+                    if (typeof sock.uploadPreKeysToServerIfRequired === 'function') {
+                        sock.uploadPreKeysToServerIfRequired().catch(() => {});
+                    }
+                    if (typeof sock.uploadPreKeys === 'function') {
+                        sock.uploadPreKeys(30).catch(() => {});
+                    }
+                } catch (assertErr) {
+                    log('WARNING', `Session assertion note: ${assertErr.message}`);
+                }
             }
         });
 
@@ -572,11 +653,7 @@ async function startWhatsApp() {
 
             for (const msg of messages) {
                 if (msg.key?.id && msg.message) {
-                    messageStore.set(msg.key.id, msg.message);
-                    if (messageStore.size > 2000) {
-                        const firstKey = messageStore.keys().next().value;
-                        messageStore.delete(firstKey);
-                    }
+                    saveMessage(msg.key.id, msg.message);
                 }
                 handleIncomingMessage(msg, type || 'notify');
             }
@@ -592,7 +669,7 @@ async function startWhatsApp() {
 // -------------------------------------------------------------
 // Message Sequential Queue & Dispatcher (Zero Skipping)
 // -------------------------------------------------------------
-const messageStore = new Map(); // id -> msg.message
+// messageStore & msgRetryCounterCache are defined above for the E2EE retry shield
 const messageQueues = new Map(); // remoteJid -> Promise chain
 const processedMessageIds = new Set();
 
@@ -832,7 +909,10 @@ async function processSingleMessage(msg, body, pushName, cleanPhone, contactConf
 
     log('AI', `Processing AI response for ${pushName}: "${body.slice(0, 45)}${body.length > 45 ? '...' : ''}"`);
     try {
-        // 🛡️ Stealth Presence: Show typing ONLY to the recipient of the active reply
+        // 🛡️ Stealth Presence & LID Shield: Proactively assert session for @lid recipients to prevent Code 428
+        if (remoteJid.endsWith('@lid') && sock && typeof sock.assertSessions === 'function') {
+            await sock.assertSessions([remoteJid], true).catch(() => {});
+        }
         await sock.sendPresenceUpdate('composing', remoteJid).catch(() => {});
 
         let replyText = '';
@@ -905,7 +985,15 @@ Never mix or respond in a different language than what the user used.`;
                 log('INFO', `Attached once-per-day introduction greeting for ${pushName} (${todayIST})`);
             }
 
-            await sock.sendMessage(remoteJid, { text: finalMessage }, { quoted: msg });
+            // Assert session proactively before transmission for @lid contacts to prevent Code 428 stream drop
+            if (remoteJid.endsWith('@lid') && sock && typeof sock.assertSessions === 'function') {
+                await sock.assertSessions([remoteJid], true).catch(() => {});
+            }
+
+            const sent = await sock.sendMessage(remoteJid, { text: finalMessage }, { quoted: msg });
+            if (sent?.key?.id && sent?.message) {
+                saveMessage(sent.key.id, sent.message);
+            }
             stats.repliesSent++;
             log('SUCCESS', `Replied to ${pushName}: "${finalMessage.slice(0, 60)}${finalMessage.length > 60 ? '...' : ''}"`);
         }

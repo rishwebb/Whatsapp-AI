@@ -75,12 +75,11 @@ async function restoreFromCloud() {
             if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
 
             for (const doc of authDocs) {
-                // Doc _id might be clean filename or file path
-                const fileName = doc._id.replace(/__/g, '/').replace(/-/g, ':');
-                const safeName = path.basename(fileName);
+                // Ensure safe direct filename without corrupting hyphens or colons
+                const safeName = path.basename(doc._id);
                 const targetFilePath = path.join(authDir, safeName);
                 try {
-                    const content = doc.data || doc.content || (typeof doc === 'string' ? doc : JSON.stringify(doc));
+                    const content = doc.content || doc.data || (typeof doc === 'string' ? doc : JSON.stringify(doc));
                     fs.writeFileSync(targetFilePath, content, 'utf8');
                     restoredAuthCount++;
                 } catch (e) {
